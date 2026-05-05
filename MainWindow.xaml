@@ -184,9 +184,22 @@
 
                     <!-- URL INPUT -->
                     <TextBlock Text="VIDEO LINK" Foreground="{StaticResource TextMutedBrush}" FontSize="10" FontWeight="Bold" Margin="5,0,0,10"/>
-                    <TextBox x:Name="UrlTextBox" Style="{StaticResource GlassTextBox}" Tag="Paste YouTube link here..."
-                             GotFocus="Url_GotFocus" LostFocus="Url_LostFocus"
-                             KeyDown="Url_KeyDown" TextChanged="Url_TextChanged"/>
+                    <Border Style="{StaticResource GlassBorder}" Padding="0">
+                        <Grid>
+                            <TextBox x:Name="UrlTextBox" Style="{StaticResource GlassTextBox}" Tag="Paste YouTube URL here..." 
+                                     Padding="20,15,90,15" TextChanged="Url_TextChanged" KeyDown="Url_KeyDown"
+                                     GotFocus="Url_GotFocus" LostFocus="Url_LostFocus" BorderThickness="0"/>
+                            
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0">
+                                <Button x:Name="ClearUrlBtn" Content="✕" Style="{StaticResource IconOnlyButton}" 
+                                        Click="ClearUrl_Click" Width="30" Height="30" Visibility="Collapsed"
+                                        ToolTip="Clear URL"/>
+                                <Border Width="1" Height="20" Background="#202040" Margin="5,0"/>
+                                <Path Data="M12,2C6.48,2,2,6.48,2,12s4.48,10,10,10s10-4.48,10-10S17.52,2,12,2z M13,17h-2v-2h2V17z M13,13h-2V7h2V13z" 
+                                      Fill="{StaticResource TextMutedBrush}" Width="20" Height="20" Stretch="Uniform" Margin="5,0,10,0"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
 
                     <!-- PREVIEW CARD -->
                     <Border x:Name="PreviewCard" Background="{StaticResource SurfaceBrush}" CornerRadius="24" Margin="0,25,0,0" Padding="20" Visibility="Collapsed">
@@ -283,12 +296,38 @@
                                     
                                     <StackPanel Grid.Column="0">
                                         <TextBlock Text="START TIME" Foreground="{StaticResource TextMutedBrush}" FontSize="9" Margin="5,0,0,8"/>
-                                        <TextBox x:Name="StartTimeInput" Style="{StaticResource GlassTextBox}" Text="00:00:00" Height="45" TextChanged="TimeInput_TextChanged" PreviewTextInput="NumberOnly_Preview"/>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox x:Name="StartH" Style="{StaticResource TimePartBox}" Text="00" Tag="HH" Grid.Column="0" TextChanged="TimePart_TextChanged" PreviewTextInput="NumberOnly_Preview"/>
+                                            <TextBlock Text=":" VerticalAlignment="Center" Foreground="#404060" Margin="4,0" Grid.Column="1"/>
+                                            <TextBox x:Name="StartM" Style="{StaticResource TimePartBox}" Text="00" Tag="MM" Grid.Column="2" TextChanged="TimePart_TextChanged" PreviewTextInput="NumberOnly_Preview"/>
+                                            <TextBlock Text=":" VerticalAlignment="Center" Foreground="#404060" Margin="4,0" Grid.Column="3"/>
+                                            <TextBox x:Name="StartS" Style="{StaticResource TimePartBox}" Text="00" Tag="SS" Grid.Column="4" TextChanged="TimePart_TextChanged" PreviewTextInput="NumberOnly_Preview"/>
+                                        </Grid>
                                     </StackPanel>
 
                                     <StackPanel Grid.Column="2">
                                         <TextBlock Text="END TIME" Foreground="{StaticResource TextMutedBrush}" FontSize="9" Margin="5,0,0,8"/>
-                                        <TextBox x:Name="EndTimeInput" Style="{StaticResource GlassTextBox}" Text="00:00:00" Height="45" TextChanged="TimeInput_TextChanged" PreviewTextInput="NumberOnly_Preview"/>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox x:Name="EndH" Style="{StaticResource TimePartBox}" Text="00" Tag="HH" Grid.Column="0" TextChanged="TimePart_TextChanged" PreviewTextInput="NumberOnly_Preview"/>
+                                            <TextBlock Text=":" VerticalAlignment="Center" Foreground="#404060" Margin="4,0" Grid.Column="1"/>
+                                            <TextBox x:Name="EndM" Style="{StaticResource TimePartBox}" Text="00" Tag="MM" Grid.Column="2" TextChanged="TimePart_TextChanged" PreviewTextInput="NumberOnly_Preview"/>
+                                            <TextBlock Text=":" VerticalAlignment="Center" Foreground="#404060" Margin="4,0" Grid.Column="3"/>
+                                            <TextBox x:Name="EndS" Style="{StaticResource TimePartBox}" Text="00" Tag="SS" Grid.Column="4" TextChanged="TimePart_TextChanged" PreviewTextInput="NumberOnly_Preview"/>
+                                        </Grid>
                                     </StackPanel>
                                 </Grid>
 

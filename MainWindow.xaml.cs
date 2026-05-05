@@ -216,9 +216,30 @@ public partial class MainWindow : Window
         }
     }
 
+    private void ClearUrl_Click(object sender, RoutedEventArgs e)
+    {
+        UrlTextBox.Text = "";
+        ResetUI();
+    }
+
+    private void ResetUI()
+    {
+        PreviewCard.Visibility = Visibility.Collapsed;
+        DownloadActions.Visibility = Visibility.Collapsed;
+        _lastDownloadedFile = null;
+        _currentVideoId = null;
+        _currentThumbnailUrl = null;
+        _videoDurationSec = 0;
+        ResetProgress();
+        TitleLabel.Text = "Ready to Download";
+        MetaLabel.Text = "Enter a valid YouTube URL to start the process";
+    }
+
     private async void Url_TextChanged(object sender, TextChangedEventArgs e)
     {
         if (PreviewCard == null) return;
+        
+        ClearUrlBtn.Visibility = string.IsNullOrEmpty(UrlTextBox.Text) ? Visibility.Collapsed : Visibility.Visible;
 
         _fetchCts?.Cancel();
         _fetchCts = new CancellationTokenSource();
@@ -266,6 +287,7 @@ public partial class MainWindow : Window
     {
         await Dispatcher.InvokeAsync(() =>
         {
+            ResetUI();
             TitleLabel.Text = "🔍  Analyzing video...";
             MetaLabel.Text = "Fetching metadata from YouTube servers...";
         });
@@ -334,8 +356,7 @@ public partial class MainWindow : Window
                     StartSlider.Value = 0;
                     EndSlider.Maximum = durationSec;
                     EndSlider.Value = durationSec;
-                    StartTimeInput.Text = "00:00:00";
-                    EndTimeInput.Text = FormatSecondsFull(durationSec);
+                    UpdateTimeInputsFromSliders();
                     _isSyncing = false;
                     UpdateSliderRangeFill();
                 }
@@ -360,9 +381,21 @@ public partial class MainWindow : Window
 
     private void PlayVideo_Click(object sender, RoutedEventArgs e)
     {
-        if (!string.IsNullOrEmpty(_lastDownloadedFile) && File.Exists(_lastDownloadedFile))
+        if (string.IsNullOrEmpty(_lastDownloadedFile)) return;
+        
+        string cleanPath = _lastDownloadedFile.Trim('"');
+        if (File.Exists(cleanPath))
         {
-            Process.Start(new ProcessStartInfo(_lastDownloadedFile) { UseShellExecute = true });
+            Process.Start(new ProcessStartInfo(cleanPath) { UseShellExecute = true });
+        }
+        else
+        {
+            // Try to find it in the downloads folder if the path is relative
+            string fallbackPath = Path.Combine(_downloadFolder, Path.GetFileName(cleanPath));
+            if (File.Exists(fallbackPath))
+            {
+                Process.Start(new ProcessStartInfo(fallbackPath) { UseShellExecute = true });
+            }
         }
     }
 
@@ -460,8 +493,8 @@ public partial class MainWindow : Window
                 qualityIndex = QualityCombo.SelectedIndex;
                 format = GetSelectedTag(FormatCombo);
                 section = SectionToggle.IsChecked == true;
-                startTime = StartTimeInput.Text;
-                endTime = EndTimeInput.Text;
+                startTime = $"{StartH.Text}:{StartM.Text}:{StartS.Text}";
+                endTime = $"{EndH.Text}:{EndM.Text}:{EndS.Text}";
             });
 
             await Task.Run(() => RunDownload(url, qualityIndex, format, section, startTime, endTime));
@@ -547,7 +580,30 @@ public partial class MainWindow : Window
         using var process = new Process { StartInfo = psi };
         _currentProcess = process;
 
-        process.OutputDataReceived += (_, e) => { if (e.Data != null) ParseProgressLine(e.Data); };
+        process.OutputDataReceived += (_, e) => 
+        { 
+            if (e.Data != null) 
+            {
+                ParseProgressLine(e.Data); 
+                // Capture destination file
+                if (e.Data.Contains("Destination:"))
+                {
+                    var path = e.Data.Substring(e.Data.IndexOf("Destination:") + 12).Trim();
+                    if (!path.EndsWith(".part")) _lastDownloadedFile = path;
+                }
+                else if (e.Data.Contains("Merging formats into"))
+                {
+                    var match = Regex.Match(e.Data, "\"([^\"]+)\"");
+                    if (match.Success) _lastDownloadedFile = match.Groups[1].Value.Trim('"');
+                }
+                else if (e.Data.Contains("[download] ") && e.Data.EndsWith(".mp4"))
+                {
+                    // Fallback for single format downloads
+                    var pathIdx = e.Data.IndexOf("Destination: ");
+                    if (pathIdx >= 0) _lastDownloadedFile = e.Data.Substring(pathIdx + 13).Trim('"');
+                }
+            }
+        };
         process.ErrorDataReceived += (_, e) => { if (e.Data != null) ParseProgressLine(e.Data); };
 
         process.Start();
@@ -621,14 +677,15 @@ public partial class MainWindow : Window
 
     // ── Timeline Slider Sync ───────────────────
 
-    private void TimeInput_TextChanged(object sender, TextChangedEventArgs e)
+    private void TimePart_TextChanged(object sender, TextChangedEventArgs e)
     {
         if (_isSyncing || _videoDurationSec <= 0) return;
         _isSyncing = true;
         try
         {
-            int start = ParseTime(StartTimeInput.Text);
-            int end = ParseTime(EndTimeInput.Text);
+            int start = ParseTime($"{StartH.Text}:{StartM.Text}:{StartS.Text}");
+            int end = ParseTime($"{EndH.Text}:{EndM.Text}:{EndS.Text}");
+            
             StartSlider.Value = Math.Clamp(start, 0, _videoDurationSec);
             EndSlider.Value = Math.Clamp(end, 0, _videoDurationSec);
             UpdateSliderRangeFill();
@@ -642,11 +699,24 @@ public partial class MainWindow : Window
         _isSyncing = true;
         try
         {
-            StartTimeInput.Text = FormatSecondsFull((int)StartSlider.Value);
-            EndTimeInput.Text = FormatSecondsFull((int)EndSlider.Value);
+            UpdateTimeInputsFromSliders();
             UpdateSliderRangeFill();
         }
         finally { _isSyncing = false; }
+    }
+
+    private void UpdateTimeInputsFromSliders()
+    {
+        int start = (int)StartSlider.Value;
+        int end = (int)EndSlider.Value;
+
+        StartH.Text = (start / 3600).ToString("D2");
+        StartM.Text = ((start % 3600) / 60).ToString("D2");
+        StartS.Text = (start % 60).ToString("D2");
+
+        EndH.Text = (end / 3600).ToString("D2");
+        EndM.Text = ((end % 3600) / 60).ToString("D2");
+        EndS.Text = (end % 60).ToString("D2");
     }
 
     private void SliderGrid_PreviewMouseDown(object sender, MouseButtonEventArgs e)
