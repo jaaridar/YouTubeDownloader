@@ -2,6 +2,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Net.Http;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,6 +10,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 
 namespace YouTubeDownloader;
 
@@ -17,6 +19,8 @@ public partial class MainWindow : Window
     private readonly string _downloadFolder;
     private Process? _currentProcess;
     private bool _isDownloading;
+    private CancellationTokenSource? _fetchCts;
+    private string? _currentThumbnailUrl;
 
     public MainWindow()
     {
@@ -75,8 +79,40 @@ public partial class MainWindow : Window
         if (e.Key == Key.Enter)
         {
             e.Handled = true;
-            BeginDownload();
+            if (!_isDownloading) BeginDownload();
         }
+    }
+
+    private async void Url_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        // Debounced auto-fetch: 1.2s after user stops typing
+        _fetchCts?.Cancel();
+        _fetchCts = new CancellationTokenSource();
+        var token = _fetchCts.Token;
+
+        string url = UrlTextBox.Text.Trim();
+        if (url.Length < 15 || url == "Paste YouTube URL here...")
+        {
+            PreviewCard.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        try
+        {
+            await Task.Delay(1200, token);
+            if (!token.IsCancellationRequested)
+                await FetchVideoInfo(url);
+        }
+        catch (TaskCanceledException) { }
+    }
+
+    // ── Format Change ──────────────────────────
+
+    private void Format_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        // Show/hide compatibility bar based on format
+        var tag = GetSelectedTag(FormatCombo);
+        CompatBar.Visibility = tag == "video+audio" ? Visibility.Visible : Visibility.Collapsed;
     }
 
     // ── Section Toggle ─────────────────────────
@@ -113,6 +149,124 @@ public partial class MainWindow : Window
         }
     }
 
+    // ── Fetch Video Info (Auto-Preview) ────────
+
+    private async Task FetchVideoInfo(string url)
+    {
+        await Dispatcher.InvokeAsync(() =>
+        {
+            TitleLabel.Text = "⏳  Fetching video info...";
+            MetaLabel.Text = "";
+            SizeLabel.Text = "";
+        });
+
+        try
+        {
+            var psi = new ProcessStartInfo("yt-dlp",
+                $"--dump-json --no-warnings \"{url}\"")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                StandardOutputEncoding = System.Text.Encoding.UTF8
+            };
+
+            using var proc = Process.Start(psi);
+            string json = "";
+            if (proc != null)
+            {
+                json = await proc.StandardOutput.ReadToEndAsync();
+                proc.WaitForExit(15000);
+            }
+
+            if (string.IsNullOrEmpty(json))
+            {
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    TitleLabel.Text = "Ready 🚀";
+                    MetaLabel.Text = "Could not fetch video info — check URL";
+                    PreviewCard.Visibility = Visibility.Collapsed;
+                });
+                return;
+            }
+
+            string title = ExtractJsonString(json, "title") ?? "Unknown";
+            string uploader = ExtractJsonString(json, "uploader") ?? ExtractJsonString(json, "channel") ?? "Unknown";
+            string? durStr = ExtractJsonString(json, "duration");
+            string duration = "";
+            int durationSec = 0;
+            if (durStr != null && double.TryParse(durStr, out double ds))
+            {
+                durationSec = (int)ds;
+                duration = FormatSeconds(durationSec);
+            }
+            string? sizeStr = ExtractJsonString(json, "filesize") ?? ExtractJsonString(json, "filesize_approx");
+            long? totalBytes = null;
+            if (sizeStr != null && long.TryParse(sizeStr, out long fs))
+                totalBytes = fs;
+
+            // Get thumbnail
+            string? thumbUrl = ExtractJsonString(json, "thumbnail");
+
+            // Update UI
+            await Dispatcher.InvokeAsync(() =>
+            {
+                VideoTitleLabel.Text = title;
+                VideoMetaLabel.Text = $"📺 {uploader}  ·  ⏱️ {duration}";
+                VideoSizeLabel.Text = totalBytes.HasValue ? $"💾 {FormatBytes(totalBytes.Value)}" : "";
+                PreviewCard.Visibility = Visibility.Visible;
+                TitleLabel.Text = $"🎬  {title}";
+                MetaLabel.Text = uploader != null ? $"📺 {uploader}  ·  ⏱️ {duration}" : "";
+                if (totalBytes.HasValue)
+                    SizeLabel.Text = $"💾 Estimated: {FormatBytes(totalBytes.Value)}";
+
+                // Set end time to video duration
+                EndH.Text = (durationSec / 3600).ToString();
+                EndM.Text = ((durationSec % 3600) / 60).ToString();
+                EndS.Text = (durationSec % 60).ToString();
+            });
+
+            // Download thumbnail in background
+            if (!string.IsNullOrEmpty(thumbUrl))
+            {
+                _currentThumbnailUrl = thumbUrl;
+                await DownloadThumbnail(thumbUrl);
+            }
+        }
+        catch (Exception ex)
+        {
+            await Dispatcher.InvokeAsync(() =>
+            {
+                TitleLabel.Text = "Ready 🚀";
+                MetaLabel.Text = $"Error: {ex.Message}";
+                PreviewCard.Visibility = Visibility.Collapsed;
+            });
+        }
+    }
+
+    private async Task DownloadThumbnail(string url)
+    {
+        try
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+            var bytes = await client.GetByteArrayAsync(url);
+
+            await Dispatcher.InvokeAsync(() =>
+            {
+                using var ms = new MemoryStream(bytes);
+                var bitmap = new BitmapImage();
+                bitmap.BeginInit();
+                bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                bitmap.StreamSource = ms;
+                bitmap.EndInit();
+                bitmap.Freeze();
+                ThumbnailImage.Source = bitmap;
+            });
+        }
+        catch { /* thumbnail is optional */ }
+    }
+
     // ── Download ───────────────────────────────
 
     private void Download_Click(object sender, RoutedEventArgs e)
@@ -135,7 +289,6 @@ public partial class MainWindow : Window
         _isDownloading = true;
         DownloadBtn.IsEnabled = false;
         DownloadBtn.Content = "⏳  Downloading...";
-
         TitleLabel.Text = "🚀  Starting download...";
         MetaLabel.Text = "";
         SizeLabel.Text = "";
@@ -143,7 +296,12 @@ public partial class MainWindow : Window
 
         try
         {
-            await Task.Run(() => RunDownload(url));
+            string quality = GetQualityFormat();
+            string format = GetSelectedTag(FormatCombo);
+            bool compatMode = CompatMode.IsChecked == true;
+            bool section = SectionToggle.IsChecked == true;
+
+            await Task.Run(() => RunDownload(url, quality, format, compatMode, section));
         }
         catch (Exception ex)
         {
@@ -161,79 +319,87 @@ public partial class MainWindow : Window
             {
                 _isDownloading = false;
                 DownloadBtn.IsEnabled = true;
-                DownloadBtn.Content = "⬇  DOWNLOAD HIGH QUALITY";
+                DownloadBtn.Content = "⬇  DOWNLOAD";
             });
         }
     }
 
-    private void RunDownload(string url)
+    private string GetSelectedTag(ComboBox combo)
     {
-        // First: get video info using yt-dlp --dump-json
-        string? videoTitle = null;
-        string? uploader = null;
-        string? duration = null;
-        long? totalBytes = null;
+        if (combo.SelectedItem is ComboBoxItem item)
+            return item.Tag?.ToString() ?? "";
+        return "";
+    }
 
-        try
+    private string GetQualityFormat()
+    {
+        // Map combo index to yt-dlp format string
+        return QualityCombo.SelectedIndex switch
         {
-            var infoArgs = $"--dump-json --no-warnings --format \"bestvideo+bestaudio/best\" \"{url}\"";
-            var infoPsi = new ProcessStartInfo("yt-dlp", infoArgs)
-            {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                StandardOutputEncoding = System.Text.Encoding.UTF8
-            };
+            0 => "bestvideo[height<=4320]+bestaudio",
+            1 => "bestvideo[height<=2160]+bestaudio",
+            2 => "bestvideo[height<=1440]+bestaudio",
+            3 => "bestvideo[height<=1080]+bestaudio",
+            4 => "bestvideo[height<=720]+bestaudio",
+            5 => "bestvideo[height<=480]+bestaudio",
+            6 => "bestvideo[height<=360]+bestaudio",
+            7 => "bestvideo+bestaudio",
+            _ => "bestvideo+bestaudio"
+        };
+    }
 
-            using var infoProc = Process.Start(infoPsi);
-            string json = infoProc?.StandardOutput.ReadToEnd() ?? "";
-            infoProc?.WaitForExit(15000);
-
-            // Parse JSON fields manually (avoids needing Newtonsoft.Json)
-            videoTitle = ExtractJsonString(json, "title");
-            uploader = ExtractJsonString(json, "uploader") ?? ExtractJsonString(json, "channel");
-            string? durStr = ExtractJsonString(json, "duration");
-            if (durStr != null && double.TryParse(durStr, out double durSec))
-                duration = FormatSeconds((int)durSec);
-
-            string? sizeStr = ExtractJsonString(json, "filesize");
-            if (sizeStr == null) sizeStr = ExtractJsonString(json, "filesize_approx");
-            if (sizeStr != null && long.TryParse(sizeStr, out long fs))
-                totalBytes = fs;
-        }
-        catch { /* info is optional */ }
-
+    private void RunDownload(string url, string quality, string format, bool compatMode, bool section)
+    {
         // Build yt-dlp arguments
-        var args = $"--format \"bestvideo+bestaudio/best\" "
-                 + $"--merge-output-format mp4 "
-                 + $"--progress --newline --no-warnings "
+        string formatArg;
+
+        if (format == "audio")
+        {
+            // Audio only: best audio, extract to MP3
+            formatArg = $"--format bestaudio --extract-audio --audio-format mp3 --audio-quality 0 --postprocessor-args \"-id3v2_version 3\"";
+        }
+        else if (format == "video")
+        {
+            // Video only (no audio)
+            formatArg = $"--format \"bestvideo\"";
+        }
+        else
+        {
+            // Video + Audio
+            if (compatMode)
+            {
+                // H.264 + AAC = After Effects compatible
+                // Use best video with H.264 codec + best audio with AAC
+                formatArg = $"--format \"bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/bestvideo[vcodec^=h264]+bestaudio[acodec^=aac]/best[protocol^=https][vcodec^=avc1]\" "
+                          + $"--merge-output-format mp4 --recode-video mp4 ";
+            }
+            else
+            {
+                // Standard: use quality selector
+                string fmtStr;
+                if (string.IsNullOrEmpty(quality) || quality == "bestvideo+bestaudio")
+                    fmtStr = "bestvideo+bestaudio/best";
+                else
+                    fmtStr = quality;
+                formatArg = $"--format \"{fmtStr}\" ";
+
+                formatArg += $"--merge-output-format mp4 ";
+            }
+        }
+
+        var args = $"{formatArg}--progress --newline --no-warnings "
                  + $"--output \"{_downloadFolder}/%(title)s.%(ext)s\" ";
 
-        if (SectionToggle.IsChecked == true)
+        if (section)
         {
             string startTime = $"{Pad(StartH.Text)}:{Pad(StartM.Text)}:{Pad(StartS.Text)}";
             string endTime = $"{Pad(EndH.Text)}:{Pad(EndM.Text)}:{Pad(EndS.Text)}";
 
             args += $"--download-sections \"*{startTime}-{endTime}\" "
-                  + $"--force-keyframes-at-cuts "
-                  + $"--output \"{_downloadFolder}/%(title)s_section.%(ext)s\" ";
+                  + $"--force-keyframes-at-cuts ";
         }
 
         args += $"\"{url}\"";
-
-        // Update UI with video info
-        Dispatcher.Invoke(() =>
-        {
-            TitleLabel.Text = videoTitle != null
-                ? $"🎬  {videoTitle}"
-                : "⏳  Downloading...";
-            MetaLabel.Text = uploader != null
-                ? $"📺  {uploader}  ·  ⏱️  {duration ?? "?"}"
-                : "";
-            if (totalBytes.HasValue)
-                SizeLabel.Text = $"💾  Estimated size: {FormatBytes(totalBytes.Value)}";
-        });
 
         // Start yt-dlp process
         var psi = new ProcessStartInfo("yt-dlp", args)
@@ -251,13 +417,11 @@ public partial class MainWindow : Window
 
         process.OutputDataReceived += (_, e) =>
         {
-            if (e.Data != null)
-                ParseProgressLine(e.Data);
+            if (e.Data != null) ParseProgressLine(e.Data);
         };
         process.ErrorDataReceived += (_, e) =>
         {
-            if (e.Data != null)
-                ParseProgressLine(e.Data);
+            if (e.Data != null) ParseProgressLine(e.Data);
         };
 
         process.Start();
@@ -285,21 +449,20 @@ public partial class MainWindow : Window
             Dispatcher.Invoke(() =>
             {
                 TitleLabel.Text = "❌  Download failed";
-                MetaLabel.Text = "Check the URL and try again.";
+                MetaLabel.Text = "Check the URL and try again. If using After Effects mode, try standard mode.";
             });
         }
     }
 
+    // ── Progress Parsing ───────────────────────
+
     private void ParseProgressLine(string line)
     {
-        // yt-dlp progress line format:
-        // [download]  45.2% of ~10.50MiB at  5.23MiB/s ETA 00:01
         var match = Regex.Match(line,
             @"\[download\]\s+([\d.]+)%\s+of\s+~?([\d.]+)([KMG]iB)\s+at\s+([\d.]+)([KMG]iB)/s\s+ETA\s+(\S+)");
 
         if (!match.Success)
         {
-            // [download] 100%  (finished)
             var doneMatch = Regex.Match(line, @"\[download\]\s+100%");
             if (doneMatch.Success)
             {
@@ -319,7 +482,6 @@ public partial class MainWindow : Window
         string speedUnit = match.Groups[5].Value;
         string eta = match.Groups[6].Value;
 
-        // Convert to MB for display
         double totalMb = sizeUnit switch
         {
             "KiB" => sizeVal / 1024.0,
@@ -340,12 +502,12 @@ public partial class MainWindow : Window
 
         Dispatcher.Invoke(() =>
         {
-            double progressWidth = ProgressFrame.ActualWidth * percent / 100.0;
-            ProgressFill.Width = progressWidth;
-            ProgressText.Text = $"{percent:F1}%";
+            double pw = Math.Max(0, ProgressFrame.ActualWidth * percent / 100.0);
+            ProgressFill.Width = pw;
+            ProgressText.Text = $"{percent:F0}%";
             SpeedLabel.Text = $"⚡ {speedMbps:F2} MB/s";
             EtaLabel.Text = $"⏳ {eta}";
-            SizeProgressLabel.Text = $"📦 {downloadedMb:F1} MB / {totalMb:F1} MB";
+            SizeProgressLabel.Text = $"📦 {downloadedMb:F1} / {totalMb:F1} MB";
         });
     }
 
@@ -362,12 +524,8 @@ public partial class MainWindow : Window
 
     private static string? ExtractJsonString(string json, string key)
     {
-        // Simple JSON field extraction without external dependencies
         var match = Regex.Match(json, $@"""{key}"":\s*""((?:[^""\\]|\\.)*)""");
-        if (match.Success)
-            return match.Groups[1].Value;
-
-        // Try number value
+        if (match.Success) return match.Groups[1].Value;
         match = Regex.Match(json, $@"""{key}"":\s*([\d.]+)");
         return match.Success ? match.Groups[1].Value : null;
     }
@@ -390,8 +548,7 @@ public partial class MainWindow : Window
     private static string FormatBytes(long bytes)
     {
         double mb = bytes / (1024.0 * 1024.0);
-        if (mb >= 1024)
-            return $"{mb / 1024.0:F2} GB";
+        if (mb >= 1024) return $"{mb / 1024.0:F2} GB";
         return $"{mb:F2} MB";
     }
 }
