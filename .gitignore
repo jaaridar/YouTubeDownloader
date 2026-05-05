@@ -15,4 +15,11 @@ publish/
 publish-small/
 
 # Downloads (user content)
-downloads/
+downloads/  
+# Binaries  
+ffmpeg.exe  
+yt-dlp.exe  
+*.zip  
+  
+# All publish folders  
+publish*/ 
