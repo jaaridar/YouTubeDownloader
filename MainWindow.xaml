@@ -97,6 +97,29 @@
             </Setter>
         </Style>
 
+        <Style TargetType="Button" x:Key="ActionButton">
+            <Setter Property="Background" Value="#151525"/>
+            <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}"/>
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="Padding" Value="15,0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" Background="{TemplateBinding Background}" CornerRadius="10" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#202035"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- Toggle Switch Style -->
         <Style x:Key="ModernToggle" TargetType="CheckBox">
             <Setter Property="Template">
@@ -295,20 +318,18 @@
                                 </Grid>
                             </StackPanel>
 
-                            <Border Height="1" Background="#202040" Margin="0,25"/>
-
                             <!-- ACTION BUTTONS (PLAY/OPEN) -->
                             <StackPanel x:Name="DownloadActions" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,15,0,0" Visibility="Collapsed">
-                                <Button Style="{StaticResource IconOnlyButton}" Margin="0,0,10,0" Click="PlayVideo_Click" Padding="15,8">
+                                <Button Style="{StaticResource ActionButton}" Margin="0,0,10,0" Click="PlayVideo_Click">
                                     <StackPanel Orientation="Horizontal">
-                                        <Path Data="M8,5.14V19.14L19,12.14L8,5.14Z" Fill="{StaticResource AccentBrush}" Width="14" Height="14" Stretch="Uniform" Margin="0,0,8,0"/>
-                                        <TextBlock Text="PLAY VIDEO" Foreground="{StaticResource AccentBrush}" FontWeight="Bold" FontSize="11"/>
+                                        <Path Data="M8,5.14V19.14L19,12.14L8,5.14Z" Fill="{StaticResource AccentBrush}" Width="16" Height="16" Stretch="Uniform" Margin="0,0,8,0"/>
+                                        <TextBlock Text="PLAY VIDEO" Foreground="White" FontWeight="Bold" FontSize="11" VerticalAlignment="Center"/>
                                     </StackPanel>
                                 </Button>
-                                <Button Style="{StaticResource IconOnlyButton}" Click="OpenFolder_Click" Padding="15,8">
+                                <Button Style="{StaticResource ActionButton}" Click="OpenFolder_Click">
                                     <StackPanel Orientation="Horizontal">
-                                        <Path Data="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z" Fill="{StaticResource TextMutedBrush}" Width="14" Height="14" Stretch="Uniform" Margin="0,0,8,0"/>
-                                        <TextBlock Text="OPEN FOLDER" Foreground="{StaticResource TextMutedBrush}" FontSize="11"/>
+                                        <Path Data="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z" Fill="{StaticResource TextMutedBrush}" Width="16" Height="16" Stretch="Uniform" Margin="0,0,8,0"/>
+                                        <TextBlock Text="OPEN FOLDER" Foreground="White" FontWeight="Bold" FontSize="11" VerticalAlignment="Center"/>
                                     </StackPanel>
                                 </Button>
                             </StackPanel>

@@ -44,11 +44,22 @@ public partial class MainWindow : Window
 
     private async Task CheckDependencies()
     {
-        // Try to extract bundled tools if missing
-        await EnsureBundledTools();
+        bool hasFfmpeg = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ffmpeg.exe"));
+        bool hasYtdlp = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "yt-dlp.exe"));
 
-        bool hasFfmpeg = await CheckCommandExists("ffmpeg", "-version");
-        bool hasYtdlp = await CheckCommandExists("yt-dlp", "--version");
+        if (!hasFfmpeg || !hasYtdlp)
+        {
+            await Dispatcher.InvokeAsync(() =>
+            {
+                TitleLabel.Text = "⚙️  Initializing...";
+                MetaLabel.Text = "Extracting internal components for first-time setup...";
+                DownloadBtn.IsEnabled = false;
+            });
+            await EnsureBundledTools();
+        }
+
+        hasFfmpeg = await CheckCommandExists("ffmpeg", "-version");
+        hasYtdlp = await CheckCommandExists("yt-dlp", "--version");
 
         await Dispatcher.InvokeAsync(() =>
         {
