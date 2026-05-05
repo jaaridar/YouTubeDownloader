@@ -44,8 +44,9 @@ public partial class MainWindow : Window
 
     private async Task CheckDependencies()
     {
-        bool hasFfmpeg = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ffmpeg.exe"));
-        bool hasYtdlp = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "yt-dlp.exe"));
+        string binFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "bin");
+        bool hasFfmpeg = File.Exists(Path.Combine(binFolder, "ffmpeg.exe"));
+        bool hasYtdlp = File.Exists(Path.Combine(binFolder, "yt-dlp.exe"));
 
         if (!hasFfmpeg || !hasYtdlp)
         {
@@ -89,7 +90,10 @@ public partial class MainWindow : Window
     {
         try
         {
-            string destPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, fileName);
+            string binFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "bin");
+            Directory.CreateDirectory(binFolder);
+            
+            string destPath = Path.Combine(binFolder, fileName);
             if (!File.Exists(destPath))
             {
                 var assembly = System.Reflection.Assembly.GetExecutingAssembly();
@@ -129,9 +133,15 @@ public partial class MainWindow : Window
 
     private string GetCommandPath(string cmd)
     {
-        // Check local first
-        string localPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, cmd + ".exe");
+        string binFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "bin");
+        string localPath = Path.Combine(binFolder, cmd + ".exe");
+        
         if (File.Exists(localPath)) return localPath;
+        
+        // Fallback to legacy root check
+        string rootPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, cmd + ".exe");
+        if (File.Exists(rootPath)) return rootPath;
+        
         return cmd; // Fallback to PATH
     }
 
