@@ -1,0 +1,18 @@
+# .NET build outputs
+bin/
+obj/
+[Bb]uild/
+[Dd]ebug/
+[Rr]elease/
+*.user
+*.suo
+
+# VS
+.vs/
+
+# Published EXEs
+publish/
+publish-small/
+
+# Downloads (user content)
+downloads/
